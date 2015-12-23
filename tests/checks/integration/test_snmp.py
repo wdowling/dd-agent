@@ -5,6 +5,7 @@ from nose.plugins.attrib import attr
 
 # agent
 from checks import AgentCheck
+from checks.metric_types import MetricTypes
 from tests.checks.common import AgentCheckTest
 
 # This test is dependent of having a fully open snmpd responding at localhost:161
@@ -55,6 +56,31 @@ class SNMPTestCase(AgentCheckTest):
         {
             'OID': "1.3.6.1.2.1.25.6.3.1.2.637",    # String (not supported)
             'name': "IAmString"
+        }
+    ]
+
+    FORCED_METRICS = [
+        {
+            'OID': "1.3.6.1.2.1.4.24.6.0",          # Gauge32
+            'name': "IAmAGauge32",
+            'forced_type': 'counter'
+
+        }, {
+            'OID': "1.3.6.1.2.1.4.31.1.1.6.1",      # Counter32
+            'name': "IAmACounter64",
+            'forced_type': 'gauge'
+        }
+    ]
+    INVALID_FORCED_METRICS = [
+        {
+            'OID': "1.3.6.1.2.1.4.24.6.0",          # Gauge32
+            'name': "IAmAGauge32",
+            'forced_type': 'counter'
+
+        }, {
+            'OID': "1.3.6.1.2.1.4.31.1.1.6.1",      # Counter32
+            'name': "IAmACounter64",
+            'forced_type': 'histogram'
         }
     ]
 
@@ -235,6 +261,45 @@ class SNMPTestCase(AgentCheckTest):
             'instances': [self.generate_instance_config(self.INVALID_METRICS)]
         }
         self.assertRaises(Exception, self.run_check, config)
+
+        # # Test service check
+        self.assertServiceCheck("snmp.can_check", status=AgentCheck.CRITICAL,
+                                tags=self.CHECK_TAGS, count=1)
+        self.coverage_report()
+
+    def test_forcedtype_metric(self):
+        """
+        Forced Types should be reported as metrics of the forced type
+        """
+        config = {
+            'instances': [self.generate_instance_config(self.FORCED_METRICS)]
+        }
+        self.run_check(config)
+
+        for metric in self.FORCED_METRICS:
+            metric_name = "snmp." + (metric.get('name') or metric.get('symbol'))
+            if metric.get('forced_type') == MetricTypes.COUNTER:
+                # rate will be flushed as a gauge, so count should be 0.
+                self.assertMetric(metric_name, tags=self.CHECK_TAGS,
+                                  count=0, metric_type=MetricTypes.GAUGE)
+            elif metric.get('forced_type') == MetricTypes.GAUGE:
+                self.assertMetric(metric_name, tags=self.CHECK_TAGS,
+                                  count=1, metric_type=MetricTypes.GAUGE)
+
+        # # Test service check
+        self.assertServiceCheck("snmp.can_check", status=AgentCheck.OK,
+                                tags=self.CHECK_TAGS, count=1)
+        self.coverage_report()
+
+    def test_invalid_forcedtype_metric(self):
+        """
+        If a forced types is invalid an exception should be raised
+        """
+        config = {
+            'instances': [self.generate_instance_config(self.INVALID_FORCED_METRICS)]
+        }
+        self.assertRaises(Exception, self.run_check, config)
+
 
         # # Test service check
         self.assertServiceCheck("snmp.can_check", status=AgentCheck.CRITICAL,

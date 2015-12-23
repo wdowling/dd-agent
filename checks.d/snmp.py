@@ -413,11 +413,13 @@ class SnmpCheck(AgentCheck):
             if forced_type.lower() == "gauge":
                 value = int(snmp_value)
                 self.gauge(metric_name, value, tags)
-                return
-            if forced_type.lower() == "counter":
+            elif forced_type.lower() == "counter":
                 value = int(snmp_value)
                 self.rate(metric_name, value, tags)
-                return
+            else:
+                raise Exception("Invalid forced-type in config file: {0}".format(name))
+
+            return
 
         # Ugly hack but couldn't find a cleaner way
         # Proper way would be to use the ASN1 method isSameTypeWith but it

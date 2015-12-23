@@ -316,7 +316,7 @@ WARNINGS
             raise
 
     def assertMetric(self, metric_name, value=None, tags=None, count=None,
-                     at_least=1, hostname=None, device_name=None):
+                     at_least=1, hostname=None, device_name=None, metric_type=None):
         candidates = []
         for m_name, ts, val, mdata in self.metrics:
             if m_name == metric_name:
@@ -327,6 +327,8 @@ WARNINGS
                 if hostname is not None and mdata['hostname'] != hostname:
                     continue
                 if device_name is not None and mdata['device_name'] != device_name:
+                    continue
+                if metric_type is not None and mdata['type'] != metric_type:
                     continue
 
                 candidates.append((m_name, ts, val, mdata))
