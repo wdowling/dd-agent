@@ -98,6 +98,7 @@ class ConfigStore(object):
             if auto_config is not None:
                 check_name, init_config_tpl, instance_tpl = auto_config
             else:
+                log.debug('No auto config was found for image %s, leaving it alone.' % image)
                 return None
         else:
             try:
@@ -113,6 +114,7 @@ class ConfigStore(object):
                 if auto_config is not None:
                     check_name, init_config_tpl, instance_tpl = auto_config
                 else:
+                    log.debug('No auto config was found for image %s, leaving it alone.' % image)
                     return None
             except Exception:
                 log.info(

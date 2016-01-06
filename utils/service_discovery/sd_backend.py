@@ -71,6 +71,8 @@ class SDDockerBackend(ServiceDiscoveryBackend):
         """Extract the host IP from a docker inspect object, or the kubelet API."""
         ip_addr = container_inspect.get('NetworkSettings', {}).get('IPAddress')
         if not ip_addr:
+            log.debug("Didn't find the IP address for container %s, "
+                      "using the kubernetes way." % container_inspect.get('Id', ''))
             # kubernetes case
             host_ip = _get_default_router()
 
@@ -99,6 +101,8 @@ class SDDockerBackend(ServiceDiscoveryBackend):
         try:
             port = container_inspect['NetworkSettings']['Ports'].keys()[0].split("/")[0]
         except (IndexError, KeyError, AttributeError):
+            log.debug("Didn't find the port for container %s, "
+                      "using the kubernetes way." % container_inspect.get('Id', ''))
             # kubernetes case
             ports = container_inspect['Config'].get('ExposedPorts', {})
             port = ports.keys()[0].split("/")[0] if ports else None
@@ -121,7 +125,7 @@ class SDDockerBackend(ServiceDiscoveryBackend):
                         log.warning('different versions of `init_config` found for check {0}.'
                                     ' Keeping the first one found.'.format(check_name))
                     configs[check_name][1].append(conf[2])
-
+        log.debug('check configs: %s' % configs)
         return configs
 
     def _get_check_config(self, c_id, image):
@@ -129,6 +133,8 @@ class SDDockerBackend(ServiceDiscoveryBackend):
         inspect = self.docker_client.inspect_container(c_id)
         template_config = self._get_template_config(image)
         if template_config is None:
+            log.debug('Template config is None, container %s with image %s '
+                      'will be left unconfigured.' % (c_id, image))
             return None
         check_name, init_config_tpl, instance_tpl, variables = template_config
         var_values = {}
@@ -136,6 +142,8 @@ class SDDockerBackend(ServiceDiscoveryBackend):
             if v in self.VAR_MAPPING:
                 var_values[v] = self.VAR_MAPPING[v](inspect)
             else:
+                log.debug("Didn't find any way to extract the value for %s, "
+                          "looking in env variables/docker labels..." % v)
                 var_values[v] = self._get_explicit_variable(inspect, v)
         init_config, instances = self._render_template(init_config_tpl, instance_tpl, var_values)
         return (check_name, init_config, instances)
@@ -143,13 +151,18 @@ class SDDockerBackend(ServiceDiscoveryBackend):
     def _get_template_config(self, image_name):
         """Extract a template config from a K/V store and returns it as a dict object."""
         config_backend = self.agentConfig.get('sd_config_backend')
-        auto_conf = True if config_backend is None else False
+        if config_backend is None:
+            auto_conf = True
+            log.info('No supported configuration backend was provided, using auto-config only.')
+        else:
+            auto_conf = False
 
         tpl = ConfigStore(agentConfig=self.agentConfig).get_check_tpl(image_name, auto_conf=auto_conf)
 
         if tpl is not None and len(tpl) == 3 and all(tpl):
             check_name, init_config_tpl, instance_tpl = tpl
         else:
+            log.debug('No template was found for image %s, leaving it alone.')
             return None
         try:
             # build a list of all variables to replace in the template
