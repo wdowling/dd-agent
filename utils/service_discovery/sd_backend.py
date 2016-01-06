@@ -5,11 +5,16 @@ import requests
 import simplejson as json
 
 # project
+from config import check_yaml
+from utils.checkfiles import get_conf_path
 from utils.config_stores import ConfigStore
 from utils.dockerutil import get_client as get_docker_client
 from utils.kubeutil import _get_default_router, DEFAULT_KUBELET_PORT
 
 log = logging.getLogger(__name__)
+
+
+KUBERNETES_CHECK_NAME = 'kubernetes'
 
 
 class ServiceDiscoveryBackend(object):
@@ -68,8 +73,14 @@ class SDDockerBackend(ServiceDiscoveryBackend):
         if not ip_addr:
             # kubernetes case
             host_ip = _get_default_router()
+
             # query the pod list for this node from kubelet
-            pod_list = requests.get('http://%s:%s/pods' % (host_ip, DEFAULT_KUBELET_PORT)).json()
+            config_file_path = get_conf_path(KUBERNETES_CHECK_NAME).get()
+            check_config = check_yaml(config_file_path)
+            instances = check_config.get('instances', [{}])
+            kube_port = instances[0].get('kubelet_port', DEFAULT_KUBELET_PORT)
+            pod_list = requests.get('http://%s:%s/pods' % (host_ip, kube_port)).json()
+
             c_id = container_inspect.get('Id')
             for pod in pod_list.get('items', []):
                 pod_ip = pod.get('status', {}).get('podIP')
