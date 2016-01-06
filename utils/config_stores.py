@@ -1,5 +1,4 @@
 # std
-import itertools
 import logging
 import simplejson as json
 from os import path
@@ -9,6 +8,9 @@ from consul import Consul
 from etcd import EtcdKeyNotFound
 from etcd import Client as etcd_client
 from urllib3.exceptions import TimeoutError
+
+# project
+from utils.checkfiles import get_check_class
 
 
 log = logging.getLogger(__name__)
@@ -29,11 +31,11 @@ DEFAULT_CONSUL_DATACENTER = None
 DEFAULT_CONSUL_VERIFY = True
 
 AUTO_CONF_IMAGES = {
-    # image_name: [check_name, class_name]
-    'redis': ['redisdb', 'Redis'],
-    'nginx': ['nginx', 'Nginx'],
-    'consul': ['consul', 'ConsulCheck'],
-    'elasticsearch': ['elastic', 'ESCheck'],
+    # image_name: check_name
+    'redis': 'redisdb',
+    'nginx': 'nginx',
+    'consul': 'consul',
+    'elasticsearch': 'elastic',
 }
 
 
@@ -75,8 +77,8 @@ class ConfigStore(object):
     def _get_auto_config(self, image_name):
         for key in AUTO_CONF_IMAGES:
             if key == image_name:
-                check_name, class_name = AUTO_CONF_IMAGES[key]
-                check = self._get_check_class(check_name, class_name)
+                check_name = AUTO_CONF_IMAGES[key]
+                check = get_check_class(self.agentConfig, check_name)
                 if check is None:
                     log.info("Could not find an auto configuration template for %s."
                              " Leaving it unconfigured." % image_name)
@@ -87,22 +89,6 @@ class ConfigStore(object):
                 instance_tpl = json.dumps(auto_conf.get('instance'))
                 return [check_name, init_config_tpl, instance_tpl]
         return None
-
-    def _get_check_class(self, check_name, class_name):
-        """Return the class object of a check"""
-        from config import get_os, get_checks_paths, get_check_class
-
-        osname = get_os()
-        checks_paths = get_checks_paths(self.agentConfig, osname)
-        for check in itertools.chain(*checks_paths):
-            py_check_name = path.basename(check).split('.')[0]
-            if py_check_name == check_name:
-                check_class = get_check_class(check_name, check)
-                if isinstance(check_class, dict) or check_class is None:
-                    log.warning('Failed to load the check class for %s.' % check_name)
-                    return None
-                else:
-                    return check_class
 
     def get_check_tpl(self, image, **kwargs):
         """Retrieve template config strings from the ConfigStore."""
