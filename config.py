@@ -26,7 +26,7 @@ from util import get_os, yLoader
 from utils.platform import Platform
 from utils.proxy import get_proxy
 from utils.subprocess_output import get_subprocess_output
-from utils.config_stores import ConfigStore
+from utils.service_discovery.config_stores import ConfigStore
 
 # CONSTANTS
 AGENT_VERSION = "5.7.0"

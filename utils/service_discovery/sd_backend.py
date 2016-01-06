@@ -7,7 +7,7 @@ import simplejson as json
 # project
 from config import check_yaml
 from utils.checkfiles import get_conf_path
-from utils.config_stores import ConfigStore
+from utils.service_discovery.config_stores import ConfigStore
 from utils.dockerutil import get_client as get_docker_client
 from utils.kubeutil import _get_default_router, DEFAULT_KUBELET_PORT
 
