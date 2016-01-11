@@ -55,12 +55,16 @@ class ServiceDiscoveryBackend(object):
         config[1] = config[1]
         return config
 
+    def _drop(self):
+        ServiceDiscoveryBackend._instance = None
+
 
 class SDDockerBackend(ServiceDiscoveryBackend):
     """Docker-based service discovery"""
 
     def __init__(self, agentConfig):
         self.docker_client = get_docker_client()
+        self.config_store = ConfigStore(agentConfig=agentConfig)
         self.VAR_MAPPING = {
             'host': self._get_host,
             'port': self._get_port,
@@ -77,7 +81,7 @@ class SDDockerBackend(ServiceDiscoveryBackend):
             host_ip = _get_default_router()
 
             # query the pod list for this node from kubelet
-            config_file_path = get_conf_path(KUBERNETES_CHECK_NAME).get()
+            config_file_path = get_conf_path(KUBERNETES_CHECK_NAME)
             check_config = check_yaml(config_file_path)
             instances = check_config.get('instances', [{}])
             kube_port = instances[0].get('kubelet_port', DEFAULT_KUBELET_PORT)
@@ -94,6 +98,7 @@ class SDDockerBackend(ServiceDiscoveryBackend):
                         # compare the container id with those of containers in the current pod
                         if c_id == status.get('containerID', '').split('//')[1]:
                             ip_addr = pod_ip
+
         return ip_addr
 
     def _get_port(self, container_inspect):
@@ -136,6 +141,7 @@ class SDDockerBackend(ServiceDiscoveryBackend):
             log.debug('Template config is None, container %s with image %s '
                       'will be left unconfigured.' % (c_id, image))
             return None
+
         check_name, init_config_tpl, instance_tpl, variables = template_config
         var_values = {}
         for v in variables:
@@ -157,7 +163,7 @@ class SDDockerBackend(ServiceDiscoveryBackend):
         else:
             auto_conf = False
 
-        tpl = ConfigStore(agentConfig=self.agentConfig).get_check_tpl(image_name, auto_conf=auto_conf)
+        tpl = self.config_store.get_check_tpl(image_name, auto_conf=auto_conf)
 
         if tpl is not None and len(tpl) == 3 and all(tpl):
             check_name, init_config_tpl, instance_tpl = tpl

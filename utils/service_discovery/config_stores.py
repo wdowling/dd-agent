@@ -65,6 +65,10 @@ class ConfigStore(object):
         self.client = self.get_client()
         self.sd_template_dir = agentConfig.get('sd_template_dir')
 
+    def _drop(self):
+        """Drop the config store instance"""
+        ConfigStore._instance = None
+
     def _extract_settings(self, config):
         raise NotImplementedError()
 
