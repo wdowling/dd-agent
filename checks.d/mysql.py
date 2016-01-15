@@ -2,6 +2,7 @@
 import sys
 import re
 import traceback
+from contextlib import closing
 
 # 3p
 import pymysql
@@ -601,19 +602,18 @@ class MySql(AgentCheck):
             return version
 
         # Get MySQL version
-        cursor = db.cursor()
-        cursor.execute('SELECT VERSION()')
-        result = cursor.fetchone()
-        cursor.close()
-        del cursor
-        # Version might include a description e.g. 4.1.26-log.
-        # See
-        # http://dev.mysql.com/doc/refman/4.1/en/information-functions.html#function_version
-        version = result[0].split('-')
-        version = version[0].split('.')
-        self.mysql_version[hostkey] = version
-        self.service_metadata('version', ".".join(version))
-        return version
+        with closing(db.cursor()) as cursor:
+            cursor.execute('SELECT VERSION()')
+            result = cursor.fetchone()
+
+            # Version might include a description e.g. 4.1.26-log.
+            # See
+            # http://dev.mysql.com/doc/refman/4.1/en/information-functions.html#function_version
+            version = result[0].split('-')
+            version = version[0].split('.')
+            self.mysql_version[hostkey] = version
+            self.service_metadata('version', ".".join(version))
+            return version
 
     def _collect_all_scalars(self, key, dictionary):
         if key not in dictionary or dictionary[key] is None:
@@ -649,40 +649,38 @@ class MySql(AgentCheck):
         field_metric_map: {"Seconds_behind_master": "mysqlSecondsBehindMaster"}
         """
         try:
-            cursor = db.cursor()
-            cursor.execute(query)
-            result = cursor.fetchone()
-            if result is not None:
-                for field in field_metric_map.keys():
-                    # Get the agent metric name from the column name
-                    metric = field_metric_map[field]
-                    # Find the column name in the cursor description to identify the column index
-                    # http://www.python.org/dev/peps/pep-0249/
-                    # cursor.description is a tuple of (column_name, ..., ...)
-                    try:
-                        col_idx = [d[0].lower()
-                                   for d in cursor.description].index(field.lower())
-                        self.log.debug("Collecting metric: %s" % metric)
-                        if result[col_idx] is not None:
-                            self.log.debug(
-                                "Collecting done, value %s" % result[col_idx])
-                            if metric_type == GAUGE:
-                                self.gauge(metric, float(
-                                    result[col_idx]), tags=tags)
-                            elif metric_type == RATE:
-                                self.rate(metric, float(
-                                    result[col_idx]), tags=tags)
+            with closing(db.cursor()) as cursor:
+                cursor.execute(query)
+                result = cursor.fetchone()
+                if result is not None:
+                    for field in field_metric_map.keys():
+                        # Get the agent metric name from the column name
+                        metric = field_metric_map[field]
+                        # Find the column name in the cursor description to identify the column index
+                        # http://www.python.org/dev/peps/pep-0249/
+                        # cursor.description is a tuple of (column_name, ..., ...)
+                        try:
+                            col_idx = [d[0].lower()
+                                    for d in cursor.description].index(field.lower())
+                            self.log.debug("Collecting metric: %s" % metric)
+                            if result[col_idx] is not None:
+                                self.log.debug(
+                                    "Collecting done, value %s" % result[col_idx])
+                                if metric_type == GAUGE:
+                                    self.gauge(metric, float(
+                                        result[col_idx]), tags=tags)
+                                elif metric_type == RATE:
+                                    self.rate(metric, float(
+                                        result[col_idx]), tags=tags)
+                                else:
+                                    self.gauge(metric, float(
+                                        result[col_idx]), tags=tags)
                             else:
-                                self.gauge(metric, float(
-                                    result[col_idx]), tags=tags)
-                        else:
-                            self.log.debug(
-                                "Received value is None for index %d" % col_idx)
-                    except ValueError:
-                        self.log.exception("Cannot find %s in the columns %s"
-                                           % (field, cursor.description))
-            cursor.close()
-            del cursor
+                                self.log.debug(
+                                    "Received value is None for index %d" % col_idx)
+                        except ValueError:
+                            self.log.exception("Cannot find %s in the columns %s"
+                                            % (field, cursor.description))
         except Exception:
             self.warning("Error while running %s\n%s" %
                          (query, traceback.format_exc()))
@@ -723,11 +721,9 @@ class MySql(AgentCheck):
         # Try to get pid from pid file, it can fail for permission reason
         pid_file = None
         try:
-            cursor = db.cursor()
-            cursor.execute("SHOW VARIABLES LIKE 'pid_file'")
-            pid_file = cursor.fetchone()[1]
-            cursor.close()
-            del cursor
+            with closing(db.cursor()) as cursor:
+                cursor.execute("SHOW VARIABLES LIKE 'pid_file'")
+                pid_file = cursor.fetchone()[1]
         except Exception:
             self.warning("Error while fetching pid_file variable of MySQL.")
 
@@ -755,74 +751,59 @@ class MySql(AgentCheck):
         return pid
 
     def _get_stats_from_status(self, db):
-        cursor = db.cursor()
-        cursor.execute("SHOW /*!50002 GLOBAL */ STATUS;")
-        results = dict(cursor.fetchall())
-        cursor.close()
-        del cursor
-        return results
+        with closing(db.cursor()) as cursor:
+            cursor.execute("SHOW /*!50002 GLOBAL */ STATUS;")
+            results = dict(cursor.fetchall())
+
+            return results
 
     def _get_stats_from_variables(self, db):
-        cursor = db.cursor()
-        cursor.execute("SHOW GLOBAL VARIABLES;")
-        results = dict(cursor.fetchall())
-        cursor.close()
-        del cursor
-        return results
+        with closing(db.cursor()) as cursor:
+            cursor.execute("SHOW GLOBAL VARIABLES;")
+            results = dict(cursor.fetchall())
+
+            return results
 
     def _get_binary_log_stats(self, db):
-        cursor = db.cursor()
-        cursor.execute("SHOW MASTER LOGS;")
-        master_logs = dict(cursor.fetchall())
+        with closing(db.cursor()) as cursor:
+            cursor.execute("SHOW MASTER LOGS;")
+            master_logs = dict(cursor.fetchall())
 
-        cursor.close()
-        del cursor
+            binary_log_space = 0
+            for key, value in master_logs.iteritems():
+                binary_log_space += value
 
-        binary_log_space = 0
-        for key, value in master_logs.iteritems():
-            binary_log_space += value
-
-        return binary_log_space
+            return binary_log_space
 
     def _is_innodb_engine_enabled(self, db):
         # Whether InnoDB engine is available or not can be found out either
         # from the output of SHOW ENGINES or from information_schema.ENGINES
         # table. Later is choosen because that involves no string parsing.
-        cursor = db.cursor()
-        cursor.execute(
-            "select engine from information_schema.ENGINES where engine='InnoDB'")
+        with closing(db.cursor()) as cursor:
+            cursor.execute(
+                "select engine from information_schema.ENGINES where engine='InnoDB'")
 
-        return_val = True if cursor.rowcount > 0 else False
+            return_val = True if cursor.rowcount > 0 else False
 
-        cursor.close()
-        del cursor
-
-        return return_val
+            return return_val
 
     def _get_replica_stats(self, db):
-        cursor = db.cursor()
-        cursor.execute(
-            "SHOW SLAVE STATUS;")
+        with closing(db.cursor()) as cursor:
+            cursor.execute("SHOW SLAVE STATUS;")
+            replica_results = dict(cursor.fetchall())
 
-        replica_results = dict(cursor.fetchall())
-        cursor.close()
-        del cursor
-
-        return replica_results
+            return replica_results
 
     def _get_stats_from_innodb_status(self, db):
         # There are a number of important InnoDB metrics that are reported in
         # InnoDB status but are not otherwise present as part of the STATUS
         # variables in MySQL. Majority of these metrics are reported though
         # as a part of STATUS variables in Percona Server and MariaDB.
-        cursor = db.cursor()
-        cursor.execute("SHOW /*!50000 ENGINE*/ INNODB STATUS")
+        with closing(db.cursor()) as cursor:
+            cursor.execute("SHOW /*!50000 ENGINE*/ INNODB STATUS")
+            innodb_status = cursor.fetchone()
+            innodb_status_text = innodb_status[2]
 
-        innodb_status = cursor.fetchone()
-        innodb_status_text = innodb_status[2]
-
-        cursor.close()
-        del cursor
 
         results = {
             'Innodb_mutex_spin_waits': 0,
@@ -1178,19 +1159,16 @@ class MySql(AgentCheck):
             ORDER BY percentile
             LIMIT 1"""
 
-        cursor = db.cursor()
-        cursor.execute(sql_95th_percentile)
+        with closing(db.cursor()) as cursor:
+            cursor.execute(sql_95th_percentile)
 
-        if cursor.rowcount < 1:
-            raise Exception("Failed to fetch record from the table performance_schema.events_statements_summary_by_digest")
+            if cursor.rowcount < 1:
+                raise Exception("Failed to fetch record from the table performance_schema.events_statements_summary_by_digest")
 
-        row = cursor.fetchone()
-        query_exec_time_95th_per = row[0]
+            row = cursor.fetchone()
+            query_exec_time_95th_per = row[0]
 
-        cursor.close()
-        del cursor
-
-        return query_exec_time_95th_per
+            return query_exec_time_95th_per
 
     def _query_exec_time_per_schema(self, db):
         # Fetches the avg query execution time per schema and returns the
@@ -1201,24 +1179,21 @@ class MySql(AgentCheck):
             WHERE schema_name IS NOT NULL
             GROUP BY schema_name"""
 
-        cursor = db.cursor()
-        cursor.execute(sql_avg_query_run_time)
+        with closing(db.cursor()) as cursor:
+            cursor.execute(sql_avg_query_run_time)
 
-        if cursor.rowcount < 1:
-            raise Exception("Failed to fetch records from the table performance_schema.events_statements_summary_by_digest")
+            if cursor.rowcount < 1:
+                raise Exception("Failed to fetch records from the table performance_schema.events_statements_summary_by_digest")
 
-        schema_query_avg_run_time = {}
-        for row in cursor.fetchall():
-            schema_name = str(row[0])
-            avg_us = long(row[2])
+            schema_query_avg_run_time = {}
+            for row in cursor.fetchall():
+                schema_name = str(row[0])
+                avg_us = long(row[2])
 
-            # set the tag as the dictionary key
-            schema_query_avg_run_time["schema:{0}".format(schema_name)] = avg_us
+                # set the tag as the dictionary key
+                schema_query_avg_run_time["schema:{0}".format(schema_name)] = avg_us
 
-        cursor.close()
-        del cursor
-
-        return schema_query_avg_run_time
+            return schema_query_avg_run_time
 
     def _query_size_per_schema(self, db):
         # Fetches the avg query execution time per schema and returns the
@@ -1231,24 +1206,21 @@ class MySql(AgentCheck):
                  GROUP BY table_schema;
         """
 
-        cursor = db.cursor()
-        cursor.execute(sql_query_schema_size)
+        with closing(db.cursor()) as cursor:
+            cursor.execute(sql_query_schema_size)
 
-        if cursor.rowcount < 1:
-            raise Exception("Failed to fetch records from the information schema 'tables' table.")
+            if cursor.rowcount < 1:
+                raise Exception("Failed to fetch records from the information schema 'tables' table.")
 
-        schema_size = {}
-        for row in cursor.fetchall():
-            schema_name = str(row[0])
-            size = long(row[1])
+            schema_size = {}
+            for row in cursor.fetchall():
+                schema_name = str(row[0])
+                size = long(row[1])
 
-            # set the tag as the dictionary key
-            schema_size["schema:{0}".format(schema_name)] = size
+                # set the tag as the dictionary key
+                schema_size["schema:{0}".format(schema_name)] = size
 
-        cursor.close()
-        del cursor
-
-        return schema_size
+            return schema_size
 
     def _compute_synthetic_results(self, results):
         if ('Qcache_hits' in results) and ('Qcache_inserts' in results) and ('Qcache_not_cached' in results):
