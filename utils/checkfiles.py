@@ -28,6 +28,7 @@ def get_conf_path(check_name):
             return None
         else:
             conf_path = default_conf_path
+    return conf_path
 
 
 def get_check_class(agentConfig, check_name):

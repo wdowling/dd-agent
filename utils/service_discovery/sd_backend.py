@@ -165,20 +165,20 @@ class SDDockerBackend(ServiceDiscoveryBackend):
 
         tpl = self.config_store.get_check_tpl(image_name, auto_conf=auto_conf)
 
-        if tpl is not None and len(tpl) == 3 and all(tpl):
+        if tpl is not None and len(tpl) == 3:
             check_name, init_config_tpl, instance_tpl = tpl
         else:
             log.debug('No template was found for image %s, leaving it alone.')
             return None
         try:
             # build a list of all variables to replace in the template
-            variables = self.PLACEHOLDER_REGEX.findall(init_config_tpl) + \
-                self.PLACEHOLDER_REGEX.findall(instance_tpl)
+            variables = self.PLACEHOLDER_REGEX.findall(str(init_config_tpl)) + \
+                self.PLACEHOLDER_REGEX.findall(str(instance_tpl))
             variables = map(lambda x: x.strip('%'), variables)
             if not isinstance(init_config_tpl, dict):
                 init_config_tpl = json.loads(init_config_tpl)
-            if not isinstance(instance_tpl, dict):
-                instance_tpl = json.loads(instance_tpl)
+                if not isinstance(instance_tpl, dict):
+                    instance_tpl = json.loads(instance_tpl)
         except json.JSONDecodeError:
             log.error('Failed to decode the JSON template fetched from {0}.'
                       'Auto-config for {1} failed.'.format(config_backend, image_name))

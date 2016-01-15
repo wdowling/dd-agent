@@ -1,13 +1,12 @@
 # stdlib
+import copy
 import exceptions
 import mock
 import unittest
 
-# 3p
-
 # project
-from utils.service_discovery.config_stores import ConfigStore
-from utils.service_discovery.sd_backend import ServiceDiscoveryBackend
+from utils.service_discovery.config_stores import ConfigStore, EtcdStore, ConsulStore
+from utils.service_discovery.sd_backend import ServiceDiscoveryBackend, SDDockerBackend
 
 
 def clear_singletons(sd_backend):
@@ -34,18 +33,21 @@ def _get_container_inspect(c_id):
 
 def _get_tpl_conf(image_name):
     """Return a mocked configuration template from self.mock_templates."""
-    return TestServiceDiscovery.mock_templates.get(image_name, [])[0]
+    tpl_conf = copy.deepcopy(TestServiceDiscovery.mock_templates.get(image_name)[0])
+    return tpl_conf
+
+
+def _get_check_tpl(image_name, **kwargs):
+    if image_name in TestServiceDiscovery.mock_templates:
+        return copy.deepcopy(TestServiceDiscovery.mock_templates.get(image_name)[0][0:3])
+    elif image_name in TestServiceDiscovery.bad_mock_templates:
+        try:
+            return copy.deepcopy(TestServiceDiscovery.bad_mock_templates.get(image_name)[0:3])
+        except Exception:
+            return None
 
 
 class TestServiceDiscovery(unittest.TestCase):
-    # TODO:
-    #   - test:
-    #       connection error,
-    #       KeyNotFound,
-    #       malformed template,
-    #       missing variable,
-    #       fallback to auto_config
-
     docker_container_inspect = {
         u'Id': u'69ff25598b2314d1cdb7752cc3a659fb1c1352b32546af4f1454321550e842c0',
         u'Image': u'6ffc02088cb870652eca9ccd4c4fb582f75b29af2879792ed09bb46fd1c898ef',
@@ -80,6 +82,11 @@ class TestServiceDiscovery(unittest.TestCase):
             ('check_2', {}, {'host': '127.0.0.1', 'port': '1337'})),
     }
 
+    bad_mock_templates = {
+        'bad_image_0': ['invalid template'],
+        'bad_image_1': None
+    }
+
     def setUp(self):
         self.etcd_agentConfig = {
             'service_discovery': True,
@@ -103,6 +110,9 @@ class TestServiceDiscovery(unittest.TestCase):
             'sd_template_dir': '/datadog/check_configs',
         }
         self.agentConfigs = [self.etcd_agentConfig, self.consul_agentConfig, self.auto_conf_agentConfig]
+
+
+    # sd_backend tests
 
     @mock.patch('requests.get')
     @mock.patch('utils.service_discovery.sd_backend.check_yaml')
@@ -142,14 +152,33 @@ class TestServiceDiscovery(unittest.TestCase):
                 clear_singletons(sd_backend)
 
     @mock.patch('docker.Client.inspect_container', side_effect=_get_container_inspect)
-    @mock.patch('utils.service_discovery.sd_backend.SDDockerBackend._get_template_config', side_effect=_get_tpl_conf)
+    @mock.patch.object(SDDockerBackend, '_get_template_config', side_effect=_get_tpl_conf)
     def test_get_check_config(self, mock_inspect_container, mock_get_tpl_conf):
-        """Test get_check_config with mocked (constant) _get_host and _get_port, and """
-        with mock.patch('utils.service_discovery.sd_backend.SDDockerBackend._get_host', return_value='127.0.0.1'):
-            with mock.patch('utils.service_discovery.sd_backend.SDDockerBackend._get_port', return_value='1337'):
+        """Test get_check_config with mocked container inspect and config template"""
+        with mock.patch.object(SDDockerBackend, '_get_host', return_value='127.0.0.1'):
+            with mock.patch.object(SDDockerBackend, '_get_port', return_value='1337'):
                 c_id = self.docker_container_inspect.get('Id')
+                # mock_tpl = copy.deepcopy(self.mock_templates)
                 for image in self.mock_templates.keys():
                     sd_backend = ServiceDiscoveryBackend(agentConfig=self.auto_conf_agentConfig)
                     self.assertEquals(
                         sd_backend._get_check_config(c_id, image),
                         self.mock_templates[image][1])
+
+    @mock.patch.object(ConfigStore, 'get_check_tpl', side_effect=_get_check_tpl)
+    def test_get_template_config(self, mock_get_check_tpl):
+        """Test _get_template_config with mocked get_check_tpl"""
+
+        with mock.patch.object(EtcdStore, 'get_client', return_value=None):
+            with mock.patch.object(ConsulStore, 'get_client', return_value=None):
+                for agentConfig in self.agentConfigs:
+                    sd_backend = ServiceDiscoveryBackend(agentConfig=agentConfig)
+                    # normal cases
+                    # mock_tpl = copy.deepcopy(self.mock_templates)
+                    for image in self.mock_templates.keys():
+                        template = sd_backend._get_template_config(image)
+                        expected_template = self.mock_templates.get(image)[0]
+                        self.assertEquals(template, expected_template)
+                    # error cases
+                    for image in self.bad_mock_templates.keys():
+                        self.assertEquals(sd_backend._get_template_config(image), None)
