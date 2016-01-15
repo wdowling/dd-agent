@@ -477,7 +477,6 @@ class MySql(AgentCheck):
 
         if options.get('extra_performance_metrics') and self._version_compatible(db, host, "5.6.0"):
             # report avg query response time per schema to Datadog
-            schemas = {}
             try:
                 results['perf_digest_95th_percentile_avg_us'] = self._get_query_exec_time_95th_us(db)
                 results['query_run_time_avg'] = self._query_exec_time_per_schema(db)
@@ -487,7 +486,6 @@ class MySql(AgentCheck):
 
         if options.get('schema_size_metrics'):
             # report avg query response time per schema to Datadog
-            schemas = {}
             try:
                 results['information_schema_size'] = self._query_size_per_schema(db)
                 metrics.update(SCHEMA_VARS)
