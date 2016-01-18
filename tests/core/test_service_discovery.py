@@ -47,6 +47,14 @@ def _get_check_tpl(image_name, **kwargs):
             return None
 
 
+def client_read(path):
+    """Return a mocked string that would normally be read from a config store (etcd, consul...)."""
+    parts = path.split('/')
+    config_parts = ['check_name', 'init_config', 'instance']
+    image, config_part = parts[-2], parts[-1]
+    return str(TestServiceDiscovery.mock_templates.get(image)[0][config_parts.index(config_part)])
+
+
 class TestServiceDiscovery(unittest.TestCase):
     docker_container_inspect = {
         u'Id': u'69ff25598b2314d1cdb7752cc3a659fb1c1352b32546af4f1454321550e842c0',
@@ -108,9 +116,9 @@ class TestServiceDiscovery(unittest.TestCase):
             'service_discovery': True,
             'service_discovery_backend': 'docker',
             'sd_template_dir': '/datadog/check_configs',
+            'additional_checksd': '/etc/dd-agent/checks.d/',
         }
         self.agentConfigs = [self.etcd_agentConfig, self.consul_agentConfig, self.auto_conf_agentConfig]
-
 
     # sd_backend tests
 
@@ -158,7 +166,6 @@ class TestServiceDiscovery(unittest.TestCase):
         with mock.patch.object(SDDockerBackend, '_get_host', return_value='127.0.0.1'):
             with mock.patch.object(SDDockerBackend, '_get_port', return_value='1337'):
                 c_id = self.docker_container_inspect.get('Id')
-                # mock_tpl = copy.deepcopy(self.mock_templates)
                 for image in self.mock_templates.keys():
                     sd_backend = ServiceDiscoveryBackend(agentConfig=self.auto_conf_agentConfig)
                     self.assertEquals(
@@ -168,13 +175,11 @@ class TestServiceDiscovery(unittest.TestCase):
     @mock.patch.object(ConfigStore, 'get_check_tpl', side_effect=_get_check_tpl)
     def test_get_template_config(self, mock_get_check_tpl):
         """Test _get_template_config with mocked get_check_tpl"""
-
         with mock.patch.object(EtcdStore, 'get_client', return_value=None):
             with mock.patch.object(ConsulStore, 'get_client', return_value=None):
                 for agentConfig in self.agentConfigs:
                     sd_backend = ServiceDiscoveryBackend(agentConfig=agentConfig)
                     # normal cases
-                    # mock_tpl = copy.deepcopy(self.mock_templates)
                     for image in self.mock_templates.keys():
                         template = sd_backend._get_template_config(image)
                         expected_template = self.mock_templates.get(image)[0]
@@ -182,3 +187,32 @@ class TestServiceDiscovery(unittest.TestCase):
                     # error cases
                     for image in self.bad_mock_templates.keys():
                         self.assertEquals(sd_backend._get_template_config(image), None)
+
+    # config_stores tests
+
+    def test_get_auto_config(self):
+        """Test _get_auto_config"""
+        expected_tpl = {
+            'redis': ['redisdb', '{}', '{"host": "%%host%%", "port": "%%port%%"}'],
+            'nginx': ['nginx', '{}', '{"nginx_status_url": "http://%%host%%/nginx_status/"}'],
+            'consul': ['consul', '{}', '{"url": "http://%%host%%:%%port%%", "catalog_checks": "yes", "service_whitelist": [], "new_leader_checks": "yes"}'],
+            'foobar': None
+        }
+        config_store = ConfigStore(self.auto_conf_agentConfig)
+        for image in expected_tpl.keys():
+            config = config_store._get_auto_config(image)
+            self.assertEquals(config, expected_tpl.get(image))
+
+    @mock.patch.object(ConfigStore, 'client_read', side_effect=client_read)
+    def test_get_check_tpl(self, mock_client_read):
+        """Test get_check_tpl"""
+        valid_config = ['image_0', 'image_1', 'image_2']
+        invalid_config = ['bad_image_0', 'bad_image_1']
+        config_store = ConfigStore(self.auto_conf_agentConfig)
+        for image in valid_config:
+            tpl = self.mock_templates.get(image)[0]
+            self.assertEquals(tpl[0], config_store.get_check_tpl(image)[0])
+            self.assertEquals(str(tpl[1]), config_store.get_check_tpl(image)[1])
+            self.assertEquals(str(tpl[2]), config_store.get_check_tpl(image)[2])
+        for image in invalid_config:
+            self.assertEquals(None, config_store.get_check_tpl(image))
