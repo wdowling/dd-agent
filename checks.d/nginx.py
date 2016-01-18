@@ -176,11 +176,3 @@ class Nginx(AgentCheck):
             output.append((metric_base, val, tags, 'gauge'))
 
         return output
-
-    @staticmethod
-    def get_auto_config():
-        config = {
-            'init_config': {},
-            'instance': {"nginx_status_url": "http://%%host%%/nginx_status/"}
-        }
-        return config

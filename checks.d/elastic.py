@@ -244,14 +244,6 @@ class ESCheck(AgentCheck):
         # Host status needs to persist across all checks
         self.cluster_status = {}
 
-    @staticmethod
-    def get_auto_config():
-        config = {
-            'init_config': {},
-            'instance': {"url": "http://%%host%%:%%port%%"}
-        }
-        return config
-
     def get_instance_config(self, instance):
         url = instance.get('url')
         if url is None:

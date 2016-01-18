@@ -38,18 +38,6 @@ class ConsulCheck(AgentCheck):
         self._last_config_fetch_time = None
         self._last_known_leader = None
 
-    @staticmethod
-    def get_auto_config():
-        config = {
-            'init_config': {},
-            'instance': {
-                "url": "http://%%host%%:%%port%%",
-                "catalog_checks": "yes",
-                "new_leader_checks": "yes",
-                "service_whitelist": []}
-        }
-        return config
-
     def consul_request(self, instance, endpoint):
         url = urljoin(instance.get('url'), endpoint)
         try:
