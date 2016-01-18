@@ -10,7 +10,7 @@ from etcd import Client as etcd_client
 from urllib3.exceptions import TimeoutError
 
 # project
-from utils.checkfiles import get_check_class
+from utils.checkfiles import get_check_class, get_auto_conf
 
 
 log = logging.getLogger(__name__)
@@ -87,10 +87,10 @@ class ConfigStore(object):
                     log.info("Could not find an auto configuration template for %s."
                              " Leaving it unconfigured." % image_name)
                     return None
-                auto_conf = check.get_auto_config()
+                auto_conf = get_auto_conf(self.agentConfig, check_name)
                 # stringify the dict to be consistent with what comes from the config stores
                 init_config_tpl = json.dumps(auto_conf.get('init_config'))
-                instance_tpl = json.dumps(auto_conf.get('instance'))
+                instance_tpl = json.dumps(auto_conf.get('instances')[0])
                 return [check_name, init_config_tpl, instance_tpl]
         return None
 

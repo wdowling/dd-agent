@@ -151,7 +151,7 @@ class SDDockerBackend(ServiceDiscoveryBackend):
                 log.debug("Didn't find any way to extract the value for %s, "
                           "looking in env variables/docker labels..." % v)
                 var_values[v] = self._get_explicit_variable(inspect, v)
-        init_config, instances = self._render_template(init_config_tpl, instance_tpl, var_values)
+        init_config, instances = self._render_template(init_config_tpl or {}, instance_tpl or {}, var_values)
         return (check_name, init_config, instances)
 
     def _get_template_config(self, image_name):
