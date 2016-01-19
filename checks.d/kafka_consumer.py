@@ -17,9 +17,9 @@ class KafkaCheck(AgentCheck):
     SOURCE_TYPE_NAME = 'kafka'
 
     def check(self, instance):
-	znode = 'znode'
-        consumer_groups = self.read_config(instance, 'consumer_groups')
-#                                           cast=self._validate_consumer_groups)
+	spout = 'spout'
+        consumer_groups = self.read_config(instance, 'consumer_groups',
+                                           cast=self._validate_consumer_groups)
         zk_connect_str = self.read_config(instance, 'zk_connect_str')
         kafka_host_ports = self.read_config(instance, 'kafka_connect_str')
         # Construct the Zookeeper path pattern
@@ -35,12 +35,12 @@ class KafkaCheck(AgentCheck):
             topics = defaultdict(set)
             for consumer_group in consumer_groups.iteritems():
 		consumer = consumer_group[0]
-		if znode in consumer_group[1]:
-		    zn = consumer_group[1]['znode']
+		if spout in consumer_group[1]:
+		    zn = consumer_group[1]['spout']
 		else:
 		    zn = 'consumers'
 		for k,v in consumer_group[1].iteritems():
-		    if k != znode:
+		    if k != spout:
 			topics[k].update(set(v))
 
 		for topic in topics.iteritems():
@@ -117,12 +117,11 @@ class KafkaCheck(AgentCheck):
 
     def _validate_consumer_groups(self, val):
         try:
-            consumer_group, topic_partitions, consumer_path = val.items()[0]
+            consumer_group, topic_partitions = val.items()[0]
             assert isinstance(consumer_group, (str, unicode))
-            topic, partitions = topic_partitions.items()[0]
-            assert isinstance(topic, (str, unicode))
-            assert isinstance(partitions, (list, tuple))
-	    assert isinstance(consumer_path, (str, unicode))
+            spout_topic_partitions = topic_partitions.items()[1]
+            assert isinstance(spout_topic_partitions[0], (str, unicode))
+            assert isinstance(spout_topic_partitions[1], (str, list, tuple))
             return val
         except Exception, e:
             self.log.exception(e)
